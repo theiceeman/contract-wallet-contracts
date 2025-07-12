@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0
 
 pragma solidity ^0.8.20;
-import "./Address.sol";
+import "./Wallet.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
 
-/// @title AddressFactory
+/// @title WalletFactory
 /// @dev A factory contract using the factory design pattern to deploy clone wallet
 /// contracts for users; cost effectively.
-contract AddressFactory {
-    event Cloned(string name, address indexed clone, address indexed owner);
-    mapping(address => mapping(address => Address)) addresses;
+contract WalletFactory {
+    event Cloned(string name, address indexed clone, address indexed owner, address indexed master);
+    mapping(address => mapping(address => Wallet)) public addresses;
 
     /// @dev This deploys a proxy contract to a non coliding uniquely generated address
     /// using a salt passed to the create2 command.
@@ -19,6 +19,7 @@ contract AddressFactory {
     /// @return instance - Returns an instance of the deployed contract.
     function deployAddress(
         address implementation,
+        address master,
         string memory name,
         bool enableAutoFlush
     ) public returns (address instance) {
@@ -36,10 +37,10 @@ contract AddressFactory {
             )
             instance := create2(0, ptr, 0x37, salt)
         }
-        Address clonedAddress_ = Address(payable(instance));
-        clonedAddress_.init(msg.sender, name, enableAutoFlush);
+        Wallet clonedAddress_ = Wallet(payable(instance));
+        clonedAddress_.init(msg.sender, master, name, enableAutoFlush);
         addresses[msg.sender][address(clonedAddress_)] = clonedAddress_;
-        emit Cloned(clonedAddress_.name(), instance, clonedAddress_.owner());
+        emit Cloned(clonedAddress_.name(), instance, clonedAddress_.owner(), clonedAddress_.master());
         require(instance != address(0), "ERC1167: create2 failed");
     }
 

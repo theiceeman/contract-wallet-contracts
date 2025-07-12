@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0
 
-pragma solidity 0.8.20;
-import "lib/v3-core/contracts/libraries/TransferHelper.sol"; 
+pragma solidity ^0.8.20;
+import "lib/v3-core/contracts/libraries/TransferHelper.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-
-contract Address {
+contract Wallet {
     event Transfer(address, uint256);
     event Flush(address from, uint256 value, bytes data);
     event TransferGasLimitChange(
         uint256 prevTransferGasLimit,
         uint256 newTransferGasLimit
     );
+    event MasterChanged(
+        address indexed previousMaster,
+        address indexed newMaster
+    );
+    event OwnerChanged(address indexed previousOwner, address indexed newOwner);
 
     address payable public owner;
+    address payable public master;
     string public name;
     bool public autoFlush = false;
     uint256 public transferGasLimit;
- 
+
     constructor() {
         transferGasLimit = 20000;
         emit TransferGasLimitChange(0, transferGasLimit);
@@ -33,12 +38,23 @@ contract Address {
         _;
     }
 
+    modifier onlyMaster() {
+        require(msg.sender == master, "Not master");
+        _;
+    }
+    modifier onlyOwnerOrMaster() {
+        require(msg.sender == owner || msg.sender == master, "Not authorized");
+        _;
+    }
+
     function init(
         address owner_,
+        address master_,
         string memory name_,
         bool enableAutoFlush_
     ) external onlyUninitialized {
         owner = payable(owner_);
+        master = payable(master_);
         name = name_;
         autoFlush = enableAutoFlush_;
 
@@ -48,7 +64,7 @@ contract Address {
             return;
         }
 
-        (bool success, ) = owner.call{value: value}("");
+        (bool success, ) = master.call{value: value}("");
         require(success, "Flush failed");
         // NOTE: since we are forwarding on initialization,
         // we don't have the context of the original sender.
@@ -60,22 +76,26 @@ contract Address {
     /// @dev Transfers ownership of wallet to another address.
     /// @param newOwner_ - Address ownership should be transferred to.
     /// @return Returns true if successfull; or false otherwise.
-    function transferOwnership(address newOwner_)
-        public
-        onlyOwner
-        returns (bool)
-    {
+    function transferOwnership(
+        address newOwner_
+    ) public onlyOwner returns (bool) {
         require(owner != address(0), "Owner is required");
+        emit OwnerChanged(owner, newOwner_);
         owner = payable(newOwner_);
         require(owner != address(0), "Owner is required");
         return true;
     }
 
-    function _getBalance(address tokenContractAddress)
-        private
-        view
-        returns (uint256)
-    {
+    function setMaster(address newMaster_) public onlyOwner returns (bool) {
+        require(newMaster_ != address(0), "Master is required");
+        emit MasterChanged(master, newMaster_);
+        master = payable(newMaster_);
+        return true;
+    }
+
+    function _getBalance(
+        address tokenContractAddress
+    ) private view returns (uint256) {
         if (tokenContractAddress == address(this)) {
             return address(this).balance;
         } else {
@@ -89,12 +109,9 @@ contract Address {
     /// @dev This returns the wallets's balance of native and erc20 assets.
     /// @param tokenContractAddress - Address of erc20 asset or enter this contract's address for its native asset balance.
     /// @return Returns balance of the asset.
-    function getBalance(address tokenContractAddress)
-        public
-        view
-        onlyOwner
-        returns (uint256)
-    {
+    function getBalance(
+        address tokenContractAddress
+    ) public view onlyOwner returns (uint256) {
         return _getBalance(tokenContractAddress);
     }
 
@@ -194,10 +211,9 @@ contract Address {
 
     /// @dev Change gas limit of on chain transfer
     /// @param newTransferGasLimit - The new transfer gasLimit to be set.
-    function changeTransferGasLimit(uint256 newTransferGasLimit)
-        external
-        onlyOwner
-    {
+    function changeTransferGasLimit(
+        uint256 newTransferGasLimit
+    ) external onlyOwner {
         require(newTransferGasLimit >= 2300, "Transfer gas limit too low");
         emit TransferGasLimitChange(transferGasLimit, newTransferGasLimit);
         transferGasLimit = newTransferGasLimit;
@@ -211,18 +227,16 @@ contract Address {
             return;
         }
 
-        (bool success, ) =  owner.call{value: value}("");
+        (bool success, ) = master.call{value: value}("");
         require(success, "Flush failed");
         emit Flush(msg.sender, value, msg.data);
     }
 
     /// @dev This flushes a single erc20 token to a deployer/owner address.
     /// @param tokenContractAddress - Address of token to be flushed.
-    function flushTokens(address tokenContractAddress)
-        public
-        onlyOwner
-        returns (bool)
-    {
+    function flushTokens(
+        address tokenContractAddress
+    ) public onlyOwnerOrMaster returns (bool) {
         IERC20 instance = IERC20(tokenContractAddress);
         address forwarderAddress = address(this);
         uint256 forwarderBalance = instance.balanceOf(forwarderAddress);
@@ -232,7 +246,7 @@ contract Address {
 
         TransferHelper.safeTransfer(
             tokenContractAddress,
-            owner,
+            master,
             forwarderBalance
         );
         return true;
@@ -241,11 +255,9 @@ contract Address {
     /// @dev This flushes multiple erc20 tokens to a deployer/owner address.
     /// @param tokenContractAddresses - Array of asset addresses to be flushed.
     /// @return Returns true if successfull.
-    function flushMultipleTokens(address[] calldata tokenContractAddresses)
-        external
-        onlyOwner
-        returns (bool)
-    {
+    function flushMultipleTokens(
+        address[] calldata tokenContractAddresses
+    ) external onlyOwnerOrMaster returns (bool) {
         for (uint256 i = 0; i < tokenContractAddresses.length; i++) {
             require(
                 flushTokens(tokenContractAddresses[i]),
