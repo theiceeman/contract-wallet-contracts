@@ -6,9 +6,9 @@ import {Wallet} from "src/Wallet.sol";
 import {WalletFactory} from "src/WalletFactory.sol";
 
 /* 
-base
-  Wallet contract deployed at: 0x31455eE8dbc630579776A16a0F4890B732e75964
-  WalletFactory contract deployed at: 0x42db41295Feaec0FC01629e8DDc8946C2D770E6a
+base-sepolia
+  Wallet contract deployed at: 0xc7cB2efBa34EfE32AC990392945B8bEC5E78A4d8
+  WalletFactory contract deployed at: 0xA366b936b6eCD03f5da29794cd6BCaCc43C60d46
  */
 
 /// @title Wallet and WalletFactory deployment script
